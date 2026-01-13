@@ -10,7 +10,7 @@ from enum import Enum
 from datetime import datetime
 output_dir = "data1.txt"
 action_count = 0
-action_list = ["a1", "a2", "a3", "a4", "a5","a6","b1","b2","b3","b4","b5","b6"]
+action_list = ["a1", "a2", "a3", "a4", "a5","b1","b2","b3","b4","b5","b6"]
 # ==================== 系統全局變數與資料結構 ====================
 
 class SystemState(Enum):
@@ -82,9 +82,9 @@ ctx.inventory = {
 # 初始化模擬訂單隊列
 ctx.order_queue = [
     Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色", "外殼": "標準"},
-          ["螺絲A", "外殼_藍色", "主板", "電池", "連接線"]),
+          ["螺絲A", "外殼_藍色", "主板"]),
     Order("ORD-2026-002", "RoboArm-X200", {"顏色": "紅色", "外殼": "加強"},
-          ["螺絲B", "外殼_紅色", "主板", "傳感器", "電池"]),
+          ["螺絲B", "外殼_紅色", "主板"]),
 ]
 
 
@@ -374,7 +374,7 @@ def cmd_reset_system():
         "主板": 3, "電池": 8, "傳感器": 0, "連接線": 15,
     }
     ctx.order_queue = [
-        Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色"}, ["螺絲A", "外殼_藍色", "主板", "電池"]),
+        Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色"}, ["螺絲A", "外殼_藍色", "主板"]),
         Order("ORD-2026-002", "RoboArm-X200", {"顏色": "紅色"}, ["螺絲B", "外殼_紅色", "傳感器"]),
     ]
     ctx.log("🔄 系統已重置")
