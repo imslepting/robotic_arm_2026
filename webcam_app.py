@@ -196,10 +196,13 @@ def _process_next_item():
         ctx.log("⏳ 請取走物料後說「下一個物件」")
         ctx.speak(target_item)  # TTS: 物料名稱
     else:
-        ctx.log(f"⚠️ {target_item} 缺料！正在申請補料...")
+        # 缺料：提示並自動繼續拿取下一個
+        ctx.log(f"⚠️ {target_item} 缺料！已加入補料清單")
         ctx.missing_list.append(target_item)
+        ctx.speak(f"{target_item} 缺料")  # TTS: 通知缺料
+        ctx.log(f"➡️ 自動跳過，繼續拿取下一個物料...")
         ctx.current_bom_index += 1
-        return _process_next_item()
+        return _process_next_item()  # 遞迴繼續拿取下一個
     
     return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
 
