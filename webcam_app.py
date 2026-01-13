@@ -229,6 +229,7 @@ def _check_missing_items():
     else:
         ctx.state = SystemState.WAIT_REFILL
         ctx.log(f"⏳ 等待補料：{ctx.missing_list}")
+        ctx.log("先行拿取下一步物料")
         ctx.log("📦 補料完成後請點擊「補料完成」")
         items_text = "、".join(ctx.missing_list)
         ctx.speak(f"等待補料 {items_text} 中")
@@ -351,44 +352,12 @@ def cmd_reset_system():
     return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
 
 
-# ==================== JavaScript TTS ====================
-
-TTS_JS = """
-() => {
-    // 監聽 TTS 文字框變化
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.type === 'childList' || mutation.type === 'characterData') {
-                const ttsBox = document.querySelector('#tts_output textarea');
-                if (ttsBox && ttsBox.value && ttsBox.value.trim()) {
-                    const text = ttsBox.value.trim();
-                    console.log('TTS:', text);
-                    
-                    // 使用 Web Speech API
-                    if ('speechSynthesis' in window) {
-                        const utterance = new SpeechSynthesisUtterance(text);
-                        utterance.lang = 'zh-TW';
-                        utterance.rate = 1.0;
-                        speechSynthesis.speak(utterance);
-                    }
-                    
-                    // 清空文字框
-                    setTimeout(() => { ttsBox.value = ''; }, 100);
-                }
-            }
-        });
-    });
-    
-    // 等待 DOM 載入後開始監聽
-    setTimeout(() => {
-        const ttsBox = document.querySelector('#tts_output');
-        if (ttsBox) {
-            observer.observe(ttsBox, { childList: true, subtree: true, characterData: true });
-            console.log('TTS Observer 已啟動');
-        }
-    }, 2000);
-}
-"""
+# 語音合成函數 (JavaScript)
+def speak_js(text):
+    """返回調用 TTS 的 JavaScript"""
+    if text:
+        return f'speechSynthesis.speak(new SpeechSynthesisUtterance("{text}"))'
+    return ""
 
 
 # ==================== Gradio 介面 ====================
@@ -400,8 +369,36 @@ def create_interface():
         gr.Markdown("# 🤖 機械手臂訂單管理系統")
         gr.Markdown("*智慧製造流程管理 | 語音回饋系統*")
         
-        # 隱藏的 TTS 輸出框
-        tts_output = gr.Textbox(elem_id="tts_output", visible=False)
+        # TTS 嵌入式 HTML + JavaScript
+        gr.HTML("""
+        <script>
+        function speakText(text) {
+            if (text && text.trim() && 'speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text.trim());
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.0;
+                speechSynthesis.cancel(); // 取消之前的語音
+                speechSynthesis.speak(utterance);
+                console.log('TTS:', text);
+            }
+        }
+        
+        // 監聽 TTS 文字框變化
+        setInterval(() => {
+            const ttsBox = document.querySelector('#tts_output textarea');
+            if (ttsBox && ttsBox.value && ttsBox.value.trim()) {
+                speakText(ttsBox.value);
+                ttsBox.value = '';
+            }
+        }, 500);
+        
+        console.log('TTS 系統已啟動');
+        </script>
+        <div id="tts_status" style="display:none;">TTS Ready</div>
+        """)
+        
+        # TTS 輸出框 (可見，用於調試)
+        tts_output = gr.Textbox(elem_id="tts_output", label="🔊 語音輸出", lines=1, interactive=False)
         
         # ===== 上半部：3 個攝影機 =====
         with gr.Row():
@@ -451,18 +448,54 @@ def create_interface():
                     btn_inventory = gr.Button("📊 查看庫存")
                     btn_add_order = gr.Button("➕ 新增測試訂單")
         
-        # 綁定按鈕事件 - 輸出包含 TTS
+        # JavaScript TTS 函數
+        tts_js = """
+        (status, log, tts_text) => {
+            if (tts_text && tts_text.trim() && 'speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(tts_text.trim());
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.0;
+                speechSynthesis.cancel();
+                speechSynthesis.speak(utterance);
+                console.log('TTS 播放:', tts_text);
+            }
+            return [status, log, tts_text];
+        }
+        """
+        
+        # 綁定按鈕事件 - 使用 .then() 在回調後執行 JS TTS
         outputs = [status_display, system_log, tts_output]
-        btn_start.click(cmd_system_start, outputs=outputs)
-        btn_pause.click(cmd_pause_system, outputs=outputs)
-        btn_reset.click(cmd_reset_system, outputs=outputs)
-        btn_confirm.click(cmd_confirm_order, outputs=outputs)
-        btn_cancel.click(cmd_cancel_order, outputs=outputs)
-        btn_next.click(cmd_next_item, outputs=outputs)
-        btn_refill.click(cmd_refill_complete, outputs=outputs)
-        btn_complete.click(cmd_complete_order, outputs=outputs)
-        btn_inventory.click(cmd_check_inventory, outputs=outputs)
-        btn_add_order.click(cmd_add_test_order, outputs=outputs)
+        
+        btn_start.click(cmd_system_start, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_pause.click(cmd_pause_system, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_reset.click(cmd_reset_system, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_confirm.click(cmd_confirm_order, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_cancel.click(cmd_cancel_order, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_next.click(cmd_next_item, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_refill.click(cmd_refill_complete, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_complete.click(cmd_complete_order, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_inventory.click(cmd_check_inventory, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
+        btn_add_order.click(cmd_add_test_order, outputs=outputs).then(
+            fn=None, inputs=outputs, outputs=outputs, js=tts_js
+        )
     
     return demo
 
@@ -475,5 +508,4 @@ if __name__ == "__main__":
         share=True,
         show_error=True,
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
-        js=TTS_JS,
     )
