@@ -73,19 +73,26 @@ class SystemContext:
 # 初始化系統上下文
 ctx = SystemContext()
 
-# 初始化模擬庫存
-ctx.inventory = {
-    "螺絲A": 10, "螺絲B": 5, "外殼_藍色": 3, "外殼_紅色": 3,
-    "主板": 3, "電池": 8, "傳感器": 0, "連接線": 15,
-}
+# 初始資料定義（供初始化和重置使用）
+def get_initial_inventory():
+    """取得初始庫存"""
+    return {
+        "螺絲A": 10, "螺絲B": 5, "外殼_藍色": 3, "外殼_紅色": 3,
+        "主板": 3, "電池": 8, "傳感器": 0, "連接線": 15,
+    }
 
-# 初始化模擬訂單隊列
-ctx.order_queue = [
-    Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色", "外殼": "標準"},
-          ["螺絲A", "外殼_藍色", "主板"]),
-    Order("ORD-2026-002", "RoboArm-X200", {"顏色": "紅色", "外殼": "加強"},
-          ["螺絲B", "外殼_紅色", "主板"]),
-]
+def get_initial_orders():
+    """取得初始訂單隊列"""
+    return [
+        Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色", "外殼": "標準"},
+              ["螺絲A", "外殼_藍色", "主板", "電池"]),
+        Order("ORD-2026-002", "RoboArm-X200", {"顏色": "紅色", "外殼": "加強"},
+              ["螺絲B", "外殼_紅色", "傳感器", "電池"]),
+    ]
+
+# 初始化模擬庫存和訂單
+ctx.inventory = get_initial_inventory()
+ctx.order_queue = get_initial_orders()
 
 
 # ==================== 核心業務邏輯函數 ====================
@@ -202,8 +209,19 @@ def _process_next_item():
         ctx.log(f"🤖 正在拿取：{target_item}")
         write_action()
         ctx.log(f"   庫存剩餘：{ctx.inventory[target_item]}")
-        ctx.log("⏳ 請取走物料後說「下一個物件」")
-        ctx.speak(target_item)  # TTS: 物料名稱
+        
+        # 預測下一個是否為空
+        is_last_item = (ctx.current_bom_index == len(bom) - 1)
+        if is_last_item:
+            # 最後一個物件：自動完成物料拿取，直接進入組裝階段
+            ctx.current_bom_index += 1  # 更新索引
+            ctx.log("✅ 物料拿取完畢！")
+            ctx.state = SystemState.ASSEMBLING
+            ctx.log("🔧 請進行組裝作業")
+            ctx.speak(f"{target_item}，物料拿取完畢，請進行組裝")  # TTS: 提示完成
+        else:
+            ctx.log("⏳ 請取走物料後說「下一個物件」")
+            ctx.speak(target_item)  # TTS: 物料名稱
     else:
         # 缺料：停留在等待補貨狀態，不跳過
         ctx.log(f"⚠️ {target_item} 缺料！需要補貨後才能繼續")
@@ -369,14 +387,8 @@ def cmd_reset_system():
     """重置系統"""
     global ctx
     ctx = SystemContext()
-    ctx.inventory = {
-        "螺絲A": 10, "螺絲B": 5, "外殼_藍色": 3, "外殼_紅色": 3,
-        "主板": 3, "電池": 8, "傳感器": 0, "連接線": 15,
-    }
-    ctx.order_queue = [
-        Order("ORD-2026-001", "RoboArm-X100", {"顏色": "藍色"}, ["螺絲A", "外殼_藍色", "主板"]),
-        Order("ORD-2026-002", "RoboArm-X200", {"顏色": "紅色"}, ["螺絲B", "外殼_紅色", "傳感器"]),
-    ]
+    ctx.inventory = get_initial_inventory()
+    ctx.order_queue = get_initial_orders()
     ctx.log("🔄 系統已重置")
     ctx.speak("系統已重置")
     global action_count
@@ -535,9 +547,9 @@ def create_interface():
 if __name__ == "__main__":
     demo = create_interface()
     demo.launch(
-        server_name="127.0.0.1",
-        server_port=7860,
-        share=True,
+        server_name="0.0.0.0",
+        server_port=1870,
+        share=False,
         show_error=True,
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
     )
