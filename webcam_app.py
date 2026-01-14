@@ -10,7 +10,7 @@ from enum import Enum
 from datetime import datetime
 output_dir = "data1.txt"
 action_count = 0
-action_list = ["a1", "a2", "a3", "a4", "a5","b1","b2","b3","b4","b5","b6"]
+action_list = ["a1", "a2", "a3", "a4", "a5","b1","b2","b3","b4","b5","error","error","error"]
 # ==================== 系統全局變數與資料結構 ====================
 
 class SystemState(Enum):
@@ -218,21 +218,47 @@ def _process_next_item():
             ctx.log("✅ 物料拿取完畢！")
             ctx.state = SystemState.ASSEMBLING
             ctx.log("🔧 請進行組裝作業")
-            ctx.speak(f"{target_item}，物料拿取完畢，請進行組裝")  # TTS: 提示完成
+            ctx.speak(f"正在拿取{target_item}。物料拿取完畢後，請進行組裝")  # TTS: 提示完成
         else:
             ctx.log("⏳ 請取走物料後說「下一個物件」")
-            ctx.speak(target_item)  # TTS: 物料名稱
+            ctx.speak(f"正在拿取{target_item}")  # TTS: 物料名稱
     else:
-        # 缺料：停留在等待補貨狀態，不跳過
+        # 缺料：記錄缺料項目，自動跳到下一個物件
         ctx.log(f"⚠️ {target_item} 缺料！需要補貨後才能繼續")
         if target_item not in ctx.missing_list:
             ctx.missing_list.append(target_item)
-        ctx.state = SystemState.WAIT_REFILL
-        ctx.speak(f"{target_item} 缺料，請補貨")  # TTS: 通知缺料
-        ctx.log(f"🛑 等待補貨：{target_item}")
-        ctx.log("先取下一個物件")
         write_action()
-        ctx.log("📦 補料完成後請點擊「補料完成」")
+        
+        # 檢查是否還有下一個物件
+        next_index = ctx.current_bom_index + 1
+        if next_index < len(bom):
+            next_item = bom[next_index]
+            ctx.log(f"🔄 先拿取 {next_item}")
+            ctx.speak(f"{target_item} 缺料，先拿取 {next_item}")
+            
+            # 跳到下一個物件
+            ctx.current_bom_index = next_index
+            next_stock = ctx.inventory.get(next_item, 0)
+            
+            if next_stock > 0:
+                ctx.inventory[next_item] -= 1
+                ctx.state = SystemState.HANDOVER
+                ctx.log(f"🤖 正在拿取：{next_item}")
+                ctx.log(f"   庫存剩餘：{ctx.inventory[next_item]}")
+                ctx.log("⏳ 請取走物料後說「下一個物件」")
+            else:
+                # 下一個也缺料
+                ctx.log(f"⚠️ {next_item} 也缺料！")
+                if next_item not in ctx.missing_list:
+                    ctx.missing_list.append(next_item)
+                ctx.state = SystemState.WAIT_REFILL
+                ctx.log("📦 補料完成後請點擊「補料完成」")
+        else:
+            # 沒有下一個物件了
+            ctx.state = SystemState.WAIT_REFILL
+            ctx.speak(f"{target_item} 缺料，請補貨")
+            ctx.log(f"🛑 等待補貨：{target_item}")
+            ctx.log("📦 補料完成後請點擊「補料完成」")
     
     return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
 
@@ -278,12 +304,57 @@ def cmd_next_item():
     
     ctx.log("✅ 物料已取走")
     ctx.current_bom_index += 1
-    ctx.state = SystemState.FETCHING
     
+    # 檢查是否有缺料需要處理
+    if ctx.missing_list:
+        bom = ctx.current_order.bom_list
+        # 如果 BOM 已經處理完畢，拿取缺料物件
+        if ctx.current_bom_index >= len(bom):
+            return _process_missing_items()
+    
+    ctx.state = SystemState.FETCHING
     return _process_next_item()
 
 
 # =============== 階段三：缺料補救與回補循環 ===============
+
+def _process_missing_items():
+    """處理缺料物件 - 拿取缺料清單中的物件"""
+    if not ctx.missing_list:
+        # 沒有缺料，直接完成
+        return _check_missing_items()
+    
+    # 取第一個缺料物件
+    target_item = ctx.missing_list[0]
+    stock = ctx.inventory.get(target_item, 0)
+    
+    if stock > 0:
+        ctx.inventory[target_item] -= 1
+        ctx.missing_list.pop(0)  # 從缺料清單移除
+        ctx.state = SystemState.HANDOVER
+        ctx.log(f"🤖 正在拿取：{target_item}（補料）")
+        write_action()
+        ctx.log(f"   庫存剩餘：{ctx.inventory[target_item]}")
+        
+        # 檢查是否還有更多缺料
+        if ctx.missing_list:
+            ctx.log("⏳ 請取走物料後說「下一個物件」")
+            ctx.speak(f"正在拿取{target_item}")
+        else:
+            # 這是最後一個缺料物件，自動完成
+            ctx.log("✅ 所有物料拿取完畢！")
+            ctx.state = SystemState.ASSEMBLING
+            ctx.log("🔧 請進行組裝作業")
+            ctx.speak(f"正在拿取{target_item}。物料拿取完畢後，請進行組裝")
+    else:
+        # 還是缺料，需要等待補貨
+        ctx.state = SystemState.WAIT_REFILL
+        ctx.speak(f"{target_item} 缺料，請補貨")
+        ctx.log(f"🛑 等待補貨：{target_item}")
+        ctx.log("📦 補料完成後請點擊「補料完成」")
+    
+    return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
+
 
 def _check_missing_items():
     """檢查缺料清單 - BOM處理完畢時呼叫"""
@@ -299,7 +370,12 @@ def _check_missing_items():
 
 def cmd_refill_complete():
     """補料完成指令"""
-    if ctx.state != SystemState.WAIT_REFILL:
+    # 允許在 WAIT_REFILL 狀態，或 HANDOVER 狀態且有缺料時執行
+    if ctx.state == SystemState.WAIT_REFILL:
+        pass  # 正常補料流程
+    elif ctx.state == SystemState.HANDOVER and ctx.missing_list:
+        pass  # 交接中但有缺料，允許補料
+    else:
         ctx.log(f"❌ 無法執行：當前狀態為 {ctx.state.value}")
         return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
     
@@ -311,13 +387,10 @@ def cmd_refill_complete():
         ctx.inventory[item] = ctx.inventory.get(item, 0) + 5
         ctx.log(f"   ✅ {item} 已補貨 (庫存: {ctx.inventory[item]})")
     
-    # 清空缺料清單
-    ctx.missing_list = []
-    
-    # 重新處理當前 BOM 項目
-    ctx.state = SystemState.FETCHING
-    ctx.log("🔄 繼續備料流程...")
-    return after_refill()
+    # 不自動拿取，等使用者點擊「下一個物件」
+    ctx.log("⏳ 請點擊「下一個物件」繼續拿取")
+
+    return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
     # return 0
 
 
@@ -331,7 +404,7 @@ def cmd_complete_order():
     
     completed_order = ctx.current_order
     ctx.log(f"🎉 訂單 {completed_order.order_id} 已完成！")
-    ctx.speak("訂單完成")
+    # ctx.speak("載入下一筆訂單")
     write_action()
     
     if ctx.order_queue and ctx.order_queue[0].order_id == completed_order.order_id:
@@ -347,7 +420,7 @@ def cmd_complete_order():
         ctx.state = SystemState.WAIT_CONFIRM
         ctx.log(f"📢 新訂單：{ctx.current_order.order_id}")
         req_text = "，".join([f"{k}{v}" for k, v in ctx.current_order.custom_requirements.items()])
-        ctx.speak(f"新訂單 {ctx.current_order.product_model}，{req_text}")
+        ctx.speak(f"新訂單載入中 {ctx.current_order.product_model}，{req_text}")
     else:
         ctx.log("📭 目前無更多訂單")
         global action_count
