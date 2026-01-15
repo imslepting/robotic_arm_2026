@@ -8,6 +8,22 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 from enum import Enum
 from datetime import datetime
+import threading
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+# ==================== FastAPI 設定 ====================
+api = FastAPI(title="Robotic Arm Control API")
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 output_dir = "data1.txt"
 action_count = 0
 action_list = ["a1", "a2", "a3", "a4", "a5","b1","b2","b3","b4","b5","error","error","error"]
@@ -478,6 +494,78 @@ def speak_js(text):
     return ""
 
 
+# ==================== API 端點 ====================
+
+@api.get("/api/status")
+def api_get_status():
+    """取得當前狀態"""
+    return {
+        "status": get_status_display(),
+        "log": ctx.get_log_text(),
+        "tts": ""
+    }
+
+@api.post("/api/start")
+def api_start():
+    """系統啟動"""
+    status, log, tts = cmd_system_start()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/confirm")
+def api_confirm():
+    """確認訂單"""
+    status, log, tts = cmd_confirm_order()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/cancel")
+def api_cancel():
+    """取消訂單"""
+    status, log, tts = cmd_cancel_order()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/pause")
+def api_pause():
+    """暫停系統"""
+    status, log, tts = cmd_pause_system()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/next")
+def api_next():
+    """下一個物件"""
+    status, log, tts = cmd_next_item()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/refill")
+def api_refill():
+    """補料完成"""
+    status, log, tts = cmd_refill_complete()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/complete")
+def api_complete():
+    """完成訂單"""
+    status, log, tts = cmd_complete_order()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/inventory")
+def api_inventory():
+    """查看庫存"""
+    status, log, tts = cmd_check_inventory()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/add_order")
+def api_add_order():
+    """新增測試訂單"""
+    status, log, tts = cmd_add_test_order()
+    return {"status": status, "log": log, "tts": tts}
+
+@api.post("/api/reset")
+def api_reset():
+    """重置系統"""
+    status, log, tts = cmd_reset_system()
+    return {"status": status, "log": log, "tts": tts}
+
+
 # ==================== Gradio 介面 ====================
 
 def create_interface():
@@ -530,95 +618,43 @@ def create_interface():
                 gr.Markdown("### 📷 Camera 3")
                 gr.Image(sources=["webcam"], streaming=True, label="Camera 3")
         
-        # ===== 下半部：控制面板 =====
+        # ===== 下半部：狀態監控面板 =====
         with gr.Row():
-            with gr.Column(scale=1):
+            with gr.Column(scale=2):
                 gr.Markdown("### 🤖 系統狀態與回應")
                 status_display = gr.Textbox(label="系統狀態", lines=6, interactive=False, value=get_status_display())
-                system_log = gr.Textbox(label="系統訊息日誌", lines=12, interactive=False, value="系統就緒，等待啟動...")
+                system_log = gr.Textbox(label="系統訊息日誌", lines=12, interactive=False, value="系統就緒，等待遠端控制...")
             
             with gr.Column(scale=1):
-                gr.Markdown("#### 🔧 系統控制")
-                with gr.Row():
-                    btn_start = gr.Button("🚀 系統啟動", variant="primary")
-                    btn_pause = gr.Button("⏸️ 暫停", variant="secondary")
-                    btn_reset = gr.Button("🔄 重置系統", variant="secondary")
-                
-                gr.Markdown("#### 📋 訂單確認")
-                with gr.Row():
-                    btn_confirm = gr.Button("✅ OK 確認訂單", variant="primary")
-                    btn_cancel = gr.Button("❌ 取消訂單", variant="stop")
-                
-                gr.Markdown("#### 📦 取料控制")
-                with gr.Row():
-                    btn_next = gr.Button("➡️ 下一個物件", variant="primary")
-                
-                gr.Markdown("#### 🔄 補料處理")
-                with gr.Row():
-                    btn_refill = gr.Button("📦 補料完成", variant="primary")
-                
-                gr.Markdown("#### ✅ 結案")
-                with gr.Row():
-                    btn_complete = gr.Button("🎉 開始組裝", variant="primary")
-                
-                gr.Markdown("#### 🛠️ 輔助功能")
-                with gr.Row():
-                    btn_inventory = gr.Button("📊 查看庫存")
-                    btn_add_order = gr.Button("➕ 新增測試訂單")
+                gr.Markdown("### � 遠端控制模式")
+                gr.Markdown("""
+                > 此界面為**監控模式**，按鈕控制已移至遠端控制台。
+                > 
+                > 請開啟 **遠端控制頁面 (Port 1871)** 進行操作。
+                > 
+                > API 端點運行於 **Port 1872**
+                """)
         
-        # JavaScript TTS 函數
-        tts_js = """
-        (status, log, tts_text) => {
-            if (tts_text && tts_text.trim() && 'speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(tts_text.trim());
-                utterance.lang = 'zh-TW';
-                utterance.rate = 1.0;
-                speechSynthesis.cancel();
-                speechSynthesis.speak(utterance);
-                console.log('TTS 播放:', tts_text);
-            }
-            return [status, log, tts_text];
-        }
-        """
+        # 自動刷新狀態
+        def refresh_status():
+            return get_status_display(), ctx.get_log_text()
         
-        # 綁定按鈕事件 - 使用 .then() 在回調後執行 JS TTS
-        outputs = [status_display, system_log, tts_output]
-        
-        btn_start.click(cmd_system_start, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_pause.click(cmd_pause_system, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_reset.click(cmd_reset_system, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_confirm.click(cmd_confirm_order, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_cancel.click(cmd_cancel_order, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_next.click(cmd_next_item, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_refill.click(cmd_refill_complete, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_complete.click(cmd_complete_order, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_inventory.click(cmd_check_inventory, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_add_order.click(cmd_add_test_order, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
+        timer = gr.Timer(1.0)  # 每秒刷新一次
+        timer.tick(fn=refresh_status, outputs=[status_display, system_log])
     
     return demo
 
 
 if __name__ == "__main__":
+    # 在背景執行 FastAPI
+    def run_api():
+        uvicorn.run(api, host="0.0.0.0", port=1872, log_level="info")
+    
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
+    print("🚀 API 伺服器已啟動於 http://0.0.0.0:1872")
+    
+    # 啟動 Gradio
     demo = create_interface()
     demo.launch(
         server_name="0.0.0.0",
@@ -627,3 +663,4 @@ if __name__ == "__main__":
         show_error=True,
         theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
     )
+
