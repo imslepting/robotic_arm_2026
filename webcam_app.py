@@ -72,7 +72,7 @@ class SystemContext:
     
     def get_log_text(self) -> str:
         """獲取日誌文字"""
-        return "\n".join(self.message_log[-20:])
+        return "\n".join(self.message_log[-10:])
     
     def speak(self, text: str):
         """添加 TTS 訊息"""
