@@ -603,8 +603,8 @@ def create_interface():
         <div id="tts_status" style="display:none;">TTS Ready</div>
         """)
         
-        # TTS 輸出框 (可見，用於調試)
-        tts_output = gr.Textbox(elem_id="tts_output", label="🔊 語音輸出", lines=1, interactive=False)
+        # TTS 輸出 (隱藏，僅供 JavaScript 使用)
+        tts_output = gr.Textbox(elem_id="tts_output", visible=False)
         
         # ===== 上半部：3 個攝影機 =====
         with gr.Row():
@@ -619,21 +619,40 @@ def create_interface():
                 gr.Image(sources=["webcam"], streaming=True, label="Camera 3")
         
         # ===== 下半部：狀態監控面板 =====
+        # 自訂樣式：放大字體
+        gr.HTML("""
+        <style>
+            #status_display textarea, #system_log textarea {
+                font-size: 18px !important;
+                line-height: 1.5 !important;
+            }
+            #status_display label, #system_log label {
+                font-size: 16px !important;
+                font-weight: bold !important;
+            }
+        </style>
+        """)
+        
         with gr.Row():
-            with gr.Column(scale=2):
-                gr.Markdown("### 🤖 系統狀態與回應")
-                status_display = gr.Textbox(label="系統狀態", lines=6, interactive=False, value=get_status_display())
-                system_log = gr.Textbox(label="系統訊息日誌", lines=12, interactive=False, value="系統就緒，等待遠端控制...")
+            with gr.Column(scale=1):
+                gr.Markdown("### 🤖 系統狀態")
+                status_display = gr.Textbox(
+                    elem_id="status_display",
+                    label="系統狀態", 
+                    lines=10, 
+                    interactive=False, 
+                    value=get_status_display()
+                )
             
             with gr.Column(scale=1):
-                gr.Markdown("### � 遠端控制模式")
-                gr.Markdown("""
-                > 此界面為**監控模式**，按鈕控制已移至遠端控制台。
-                > 
-                > 請開啟 **遠端控制頁面 (Port 1871)** 進行操作。
-                > 
-                > API 端點運行於 **Port 1872**
-                """)
+                gr.Markdown("### 📋 系統訊息日誌")
+                system_log = gr.Textbox(
+                    elem_id="system_log",
+                    label="系統訊息日誌", 
+                    lines=10, 
+                    interactive=False, 
+                    value="系統就緒，等待遠端控制..."
+                )
         
         # 自動刷新狀態
         def refresh_status():
