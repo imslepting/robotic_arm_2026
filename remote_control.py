@@ -11,19 +11,19 @@ from typing import Tuple
 API_BASE = "http://localhost:1872"
 
 
-def call_api(endpoint: str) -> Tuple[str, str, str]:
-    """呼叫主應用 API"""
+def call_api(endpoint: str) -> Tuple[str, str]:
+    """呼叫主應用 API，只回傳狀態和日誌"""
     try:
         response = requests.post(f"{API_BASE}/api/{endpoint}", timeout=5)
         response.raise_for_status()
         data = response.json()
-        return data.get("status", ""), data.get("log", ""), data.get("tts", "")
+        return data.get("status", ""), data.get("log", "")
     except requests.exceptions.ConnectionError:
-        return "❌ 連線失敗：無法連接到主應用程式", "請確認 webcam_app.py 已啟動", ""
+        return "❌ 連線失敗：無法連接到主應用程式", "請確認 webcam_app.py 已啟動"
     except requests.exceptions.Timeout:
-        return "❌ 連線逾時", "API 回應超時", ""
+        return "❌ 連線逾時", "API 回應超時"
     except Exception as e:
-        return f"❌ 錯誤: {e}", "", ""
+        return f"❌ 錯誤: {e}", ""
 
 
 def fetch_status() -> Tuple[str, str]:
@@ -79,37 +79,6 @@ def create_remote_interface():
         gr.Markdown("# 🎮 遠端控制台")
         gr.Markdown("*透過 API 控制機械手臂訂單管理系統*")
         
-        # TTS 嵌入式 HTML + JavaScript
-        gr.HTML("""
-        <script>
-        function speakText(text) {
-            if (text && text.trim() && 'speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text.trim());
-                utterance.lang = 'zh-TW';
-                utterance.rate = 1.0;
-                speechSynthesis.cancel();
-                speechSynthesis.speak(utterance);
-                console.log('TTS:', text);
-            }
-        }
-        
-        // 監聽 TTS 文字框變化
-        setInterval(() => {
-            const ttsBox = document.querySelector('#tts_output textarea');
-            if (ttsBox && ttsBox.value && ttsBox.value.trim()) {
-                speakText(ttsBox.value);
-                ttsBox.value = '';
-            }
-        }, 500);
-        
-        console.log('遠端控制 TTS 系統已啟動');
-        </script>
-        <div id="tts_status" style="display:none;">TTS Ready</div>
-        """)
-        
-        # TTS 輸出框
-        tts_output = gr.Textbox(elem_id="tts_output", label="🔊 語音輸出", lines=1, interactive=False)
-        
         with gr.Row():
             # 左側：狀態顯示
             with gr.Column(scale=1):
@@ -147,54 +116,19 @@ def create_remote_interface():
                     btn_inventory = gr.Button("📊 查看庫存")
                     btn_add_order = gr.Button("➕ 新增測試訂單")
         
-        # JavaScript TTS 函數
-        tts_js = """
-        (status, log, tts_text) => {
-            if (tts_text && tts_text.trim() && 'speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(tts_text.trim());
-                utterance.lang = 'zh-TW';
-                utterance.rate = 1.0;
-                speechSynthesis.cancel();
-                speechSynthesis.speak(utterance);
-                console.log('TTS 播放:', tts_text);
-            }
-            return [status, log, tts_text];
-        }
-        """
-        
         # 綁定按鈕事件
-        outputs = [status_display, system_log, tts_output]
+        outputs = [status_display, system_log]
         
-        btn_start.click(btn_start_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_pause.click(btn_pause_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_reset.click(btn_reset_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_confirm.click(btn_confirm_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_cancel.click(btn_cancel_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_next.click(btn_next_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_refill.click(btn_refill_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_complete.click(btn_complete_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_inventory.click(btn_inventory_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
-        btn_add_order.click(btn_add_order_click, outputs=outputs).then(
-            fn=None, inputs=outputs, outputs=outputs, js=tts_js
-        )
+        btn_start.click(btn_start_click, outputs=outputs)
+        btn_pause.click(btn_pause_click, outputs=outputs)
+        btn_reset.click(btn_reset_click, outputs=outputs)
+        btn_confirm.click(btn_confirm_click, outputs=outputs)
+        btn_cancel.click(btn_cancel_click, outputs=outputs)
+        btn_next.click(btn_next_click, outputs=outputs)
+        btn_refill.click(btn_refill_click, outputs=outputs)
+        btn_complete.click(btn_complete_click, outputs=outputs)
+        btn_inventory.click(btn_inventory_click, outputs=outputs)
+        btn_add_order.click(btn_add_order_click, outputs=outputs)
         
         # 自動刷新狀態
         timer = gr.Timer(1.0)  # 每秒刷新一次
@@ -212,7 +146,7 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=1871,
-        share=False,
+        share=True,  # 啟用公開分享，產生手機可用的網址
         show_error=True,
         theme=gr.themes.Soft(primary_hue="green", secondary_hue="slate"),
     )

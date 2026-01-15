@@ -61,6 +61,7 @@ class SystemContext:
     inventory: Dict[str, int] = field(default_factory=dict)
     message_log: List[str] = field(default_factory=list)
     tts_queue: List[str] = field(default_factory=list)  # TTS 訊息隊列
+    last_tts_for_display: str = ""  # 給顯示端的 TTS 訊息
     
     def log(self, message: str):
         """添加訊息到日誌"""
@@ -78,12 +79,20 @@ class SystemContext:
         self.tts_queue.append(text)
     
     def get_tts_text(self) -> str:
-        """獲取並清空 TTS 隊列"""
+        """獲取並清空 TTS 隊列 (供 API 使用)"""
         if self.tts_queue:
             text = " ".join(self.tts_queue)
             self.tts_queue = []
+            # 同時儲存給顯示端
+            self.last_tts_for_display = text
             return text
         return ""
+    
+    def get_display_tts(self) -> str:
+        """給顯示端 Timer 用的 TTS (取後清空)"""
+        text = self.last_tts_for_display
+        self.last_tts_for_display = ""
+        return text
 
 
 # 初始化系統上下文
@@ -603,8 +612,9 @@ def create_interface():
         <div id="tts_status" style="display:none;">TTS Ready</div>
         """)
         
-        # TTS 輸出 (隱藏，僅供 JavaScript 使用)
-        tts_output = gr.Textbox(elem_id="tts_output", visible=False)
+        # TTS 輸出 (用 CSS 隱藏，確保 textarea 元素存在供 JavaScript 使用)
+        gr.HTML('<style>#tts_output { display: none !important; }</style>')
+        tts_output = gr.Textbox(elem_id="tts_output", label="TTS", lines=1, interactive=False)
         
         # ===== 上半部：3 個攝影機 =====
         with gr.Row():
@@ -654,12 +664,29 @@ def create_interface():
                     value="系統就緒，等待遠端控制..."
                 )
         
-        # 自動刷新狀態
+        # 自動刷新狀態和 TTS
         def refresh_status():
-            return get_status_display(), ctx.get_log_text()
+            return get_status_display(), ctx.get_log_text(), ctx.get_display_tts()
+        
+        # TTS JavaScript - 在 timer.tick 時執行
+        tts_js = """
+        (status, log, tts_text) => {
+            if (tts_text && tts_text.trim() && 'speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(tts_text.trim());
+                utterance.lang = 'zh-TW';
+                utterance.rate = 1.0;
+                speechSynthesis.cancel();
+                speechSynthesis.speak(utterance);
+                console.log('TTS 播放:', tts_text);
+            }
+            return [status, log, tts_text];
+        }
+        """
         
         timer = gr.Timer(1.0)  # 每秒刷新一次
-        timer.tick(fn=refresh_status, outputs=[status_display, system_log])
+        timer.tick(fn=refresh_status, outputs=[status_display, system_log, tts_output]).then(
+            fn=None, inputs=[status_display, system_log, tts_output], outputs=[status_display, system_log, tts_output], js=tts_js
+        )
     
     return demo
 
