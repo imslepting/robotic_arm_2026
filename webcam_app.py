@@ -113,7 +113,7 @@ def get_status_display():
         status_lines.extend([
             f"📋 當前訂單: {ctx.current_order.order_id}",
             f"🎨 客製需求: {ctx.current_order.custom_requirements}",
-            f"📊 BOM進度: {ctx.current_bom_index}/{len(ctx.current_order.bom_list)}",
+            # f"📊 BOM進度: {ctx.current_bom_index}/{len(ctx.current_order.bom_list)}",
         ])
         if ctx.missing_list:
             status_lines.append(f"⚠️ 缺料清單: {ctx.missing_list}")
@@ -387,7 +387,8 @@ def cmd_refill_complete():
         ctx.inventory[item] = ctx.inventory.get(item, 0) + 5
         ctx.log(f"   ✅ {item} 已補貨 (庫存: {ctx.inventory[item]})")
     
-    # 不自動拿取，等使用者點擊「下一個物件」
+    # 切換狀態到 HANDOVER，讓使用者可以點擊「下一個物件」
+    ctx.state = SystemState.HANDOVER
     ctx.log("⏳ 請點擊「下一個物件」繼續拿取")
 
     return get_status_display(), ctx.get_log_text(), ctx.get_tts_text()
