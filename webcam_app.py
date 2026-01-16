@@ -65,8 +65,8 @@ class SystemContext:
     
     def log(self, message: str):
         """添加訊息到日誌"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.message_log.append(f"[{timestamp}] {message}")
+        # timestamp = datetime.now().strftime("%H:%M:%S")
+        self.message_log.append(f"{message}")
         if len(self.message_log) > 50:
             self.message_log = self.message_log[-50:]
     
@@ -110,9 +110,9 @@ def get_initial_orders():
     """取得初始訂單隊列"""
     return [
         Order("ORD-2026-001", "鏡頭模組-X100", {"顏色": "全白"},
-              ["底板", "鏡頭", "白色下蓋", "白色上蓋"]),
+              ["鏡頭","底板", "白色下蓋", "白色上蓋"]),
         Order("ORD-2026-002", "鏡頭模組-X200", {"顏色": "白上黑下"},
-              ["底板", "鏡頭", "白色上蓋", "黑色下蓋"]),
+              ["鏡頭","底板", "白色上蓋", "黑色下蓋"]),
     ]
 
 # 初始化模擬庫存和訂單
